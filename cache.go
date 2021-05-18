@@ -6,23 +6,57 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/coocood/freecache"
 	"github.com/labstack/echo/v4"
+	"github.com/mcuadros/go-defaults"
 )
 
-func Cache(cache *freecache.Cache) echo.MiddlewareFunc {
-	m := &CacheMiddleware{cache: cache}
+// Config defiens the configuration for a cache middleware.
+type Config struct {
+	// TTL time to life of the cache.
+	TTL time.Duration `default:"1m"`
+	// Methods methods to be cached.
+	Methods []string `default:"[GET]"`
+	// IgnoreQuery if true the Query values from the requests are ignored on
+	// the key generation.
+	IgnoreQuery bool
+	// Refresh fuction called before use the cache, if true, the cache is deleted.
+	Refresh func(c echo.Context) bool
+	// Cache fuction called before cache a request, if false, the request is not
+	// cached.
+	Cache func(c echo.Context) bool
+}
+
+func Cache(cfg *Config, cache *freecache.Cache) echo.MiddlewareFunc {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+
+	defaults.SetDefaults(cfg)
+
+	m := &CacheMiddleware{cfg: cfg, cache: cache}
 	return m.Handler
 }
 
 type CacheMiddleware struct {
+	cfg   *Config
 	cache *freecache.Cache
 }
 
 func (m *CacheMiddleware) Handler(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		err := m.readCache(c)
+		if !m.isCacheable(c.Request()) {
+			return next(c)
+		}
+
+		if mayHasBody(c.Request().Method) {
+			c.Logger().Warnf("request with body are cached ignoring the content")
+		}
+
+		key := m.getKey(c.Request())
+		err := m.readCache(key, c)
 		if err == nil {
 			return nil
 		}
@@ -35,7 +69,7 @@ func (m *CacheMiddleware) Handler(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Response().Writer = recorder
 
 		err = next(c)
-		if err := m.cacheResult(recorder); err != nil {
+		if err := m.cacheResult(key, recorder); err != nil {
 			c.Logger().Error(err)
 		}
 
@@ -43,8 +77,8 @@ func (m *CacheMiddleware) Handler(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func (m *CacheMiddleware) readCache(c echo.Context) error {
-	value, err := m.cache.Get([]byte("foo"))
+func (m *CacheMiddleware) readCache(key []byte, c echo.Context) error {
+	value, err := m.cache.Get(key)
 	if err != nil {
 		return err
 	}
@@ -63,12 +97,39 @@ func (m *CacheMiddleware) readCache(c echo.Context) error {
 	return err
 }
 
-func (m *CacheMiddleware) cacheResult(r *ResponseRecorder) error {
+func (m *CacheMiddleware) cacheResult(key []byte, r *ResponseRecorder) error {
 	b, err := r.Result()
 	if err != nil {
 		return fmt.Errorf("unable to read recorded response: %s", err)
 	}
 
-	key := []byte("foo")
-	return m.cache.Set(key, b, 1)
+	return m.cache.Set(key, b, int(m.cfg.TTL.Seconds()))
+}
+
+func (m *CacheMiddleware) isCacheable(r *http.Request) bool {
+	for _, method := range m.cfg.Methods {
+		if r.Method == method {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *CacheMiddleware) getKey(r *http.Request) []byte {
+	base := r.Method + "|" + r.URL.Path
+	if !m.cfg.IgnoreQuery {
+		base += "|" + r.URL.Query().Encode()
+	}
+
+	return []byte(base)
+}
+
+func mayHasBody(method string) bool {
+	m := method
+	if m == http.MethodPost || m == http.MethodPut || m == http.MethodDelete || m == http.MethodPatch {
+		return true
+	}
+
+	return false
 }
