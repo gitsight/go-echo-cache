@@ -23,10 +23,10 @@ type Config struct {
 	// the key generation.
 	IgnoreQuery bool
 	// Refresh fuction called before use the cache, if true, the cache is deleted.
-	Refresh func(c echo.Context) bool
+	Refresh func(r *http.Request) bool
 	// Cache fuction called before cache a request, if false, the request is not
-	// cached.
-	Cache func(c echo.Context) bool
+	// cached. If set Method is ignored.
+	Cache func(r *http.Request) bool
 }
 
 func Cache(cfg *Config, cache *freecache.Cache) echo.MiddlewareFunc {
@@ -78,6 +78,10 @@ func (m *CacheMiddleware) Handler(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func (m *CacheMiddleware) readCache(key []byte, c echo.Context) error {
+	if m.cfg.Refresh != nil && m.cfg.Refresh(c.Request()) {
+		return freecache.ErrNotFound
+	}
+
 	value, err := m.cache.Get(key)
 	if err != nil {
 		return err
@@ -107,6 +111,10 @@ func (m *CacheMiddleware) cacheResult(key []byte, r *ResponseRecorder) error {
 }
 
 func (m *CacheMiddleware) isCacheable(r *http.Request) bool {
+	if m.cfg.Cache != nil {
+		return m.cfg.Cache(r)
+	}
+
 	for _, method := range m.cfg.Methods {
 		if r.Method == method {
 			return true

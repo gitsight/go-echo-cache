@@ -53,6 +53,50 @@ func TestCache_ConfigTTL(t *testing.T) {
 	assertRequest(t, resp, http.StatusOK, "test_2")
 }
 
+func TestCache_ConfigRefresh(t *testing.T) {
+	var i int
+	client := getCachedServer(t, &Config{Refresh: func(r *http.Request) bool {
+		i++
+		return i == 2
+	}})
+
+	defer client.Close()
+
+	resp, err := http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_1")
+
+	resp, err = http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_2")
+
+	resp, err = http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_2")
+}
+
+func TestCache_ConfigCache(t *testing.T) {
+	var i int
+	client := getCachedServer(t, &Config{Cache: func(r *http.Request) bool {
+		i++
+		return i != 1
+	}})
+
+	defer client.Close()
+
+	resp, err := http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_1")
+
+	resp, err = http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_2")
+
+	resp, err = http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_2")
+}
+
 func TestCache_ConfigIgnoreQuery(t *testing.T) {
 	client := getCachedServer(t, &Config{IgnoreQuery: true})
 	defer client.Close()
