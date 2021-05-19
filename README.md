@@ -1,4 +1,4 @@
-# go-echo-cache
+# go-echo-cache [![GoDoc](https://godoc.org/github.com/gitsight/go-echo-cache?status.svg)](https://pkg.go.dev/github.com/gitsight/go-echo-cache) [![Test](https://github.com/gitsight/go-echo-cache/workflows/Test/badge.svg)](https://github.com/gitsight/go-echo-cache/actions?query=workflow%3ATest+branch%3Amaster) 
 
 *go-echo-cache*, is a server-side HTTP cache middleware designed to work with [Echo framework](https://echo.labstack.com/).
 
