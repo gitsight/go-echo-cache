@@ -29,7 +29,7 @@ type Config struct {
 	Cache func(r *http.Request) bool
 }
 
-func Cache(cfg *Config, cache *freecache.Cache) echo.MiddlewareFunc {
+func New(cfg *Config, cache *freecache.Cache) echo.MiddlewareFunc {
 	if cfg == nil {
 		cfg = &Config{}
 	}

@@ -140,7 +140,7 @@ func getCachedServer(t *testing.T, cfg *Config) *httptest.Server {
 	e := echo.New()
 
 	var i int
-	h := Cache(cfg, freecache.NewCache(42*1024*1024))(func(c echo.Context) error {
+	h := New(cfg, freecache.NewCache(42*1024*1024))(func(c echo.Context) error {
 		i++
 		return c.String(http.StatusOK, fmt.Sprintf("test_%d", i))
 	})
