@@ -16,6 +16,8 @@ type Config struct {
 	TTL time.Duration `default:"1m"`
 	// Methods methods to be cached.
 	Methods []string `default:"[GET]"`
+	// StatusCode method to be cached.
+	StatusCode []int `default:"[200,404]"`
 	// IgnoreQuery if true the Query values from the requests are ignored on
 	// the key generation.
 	IgnoreQuery bool
@@ -32,7 +34,6 @@ func New(cfg *Config, cache *freecache.Cache) echo.MiddlewareFunc {
 	}
 
 	defaults.SetDefaults(cfg)
-
 	m := &CacheMiddleware{cfg: cfg, cache: cache}
 	return m.Handler
 }
@@ -93,12 +94,27 @@ func (m *CacheMiddleware) readCache(key []byte, c echo.Context) error {
 }
 
 func (m *CacheMiddleware) cacheResult(key []byte, r *ResponseRecorder) error {
-	b, err := r.Result().Encode()
+	e := r.Result()
+	b, err := e.Encode()
 	if err != nil {
 		return fmt.Errorf("unable to read recorded response: %s", err)
 	}
 
+	if !m.isStatusCacheable(e) {
+		return nil
+	}
+
 	return m.cache.Set(key, b, int(m.cfg.TTL.Seconds()))
+}
+
+func (m *CacheMiddleware) isStatusCacheable(e *CacheEntry) bool {
+	for _, status := range m.cfg.StatusCode {
+		if e.StatusCode == status {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *CacheMiddleware) isCacheable(r *http.Request) bool {

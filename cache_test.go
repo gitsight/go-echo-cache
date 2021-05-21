@@ -136,13 +136,30 @@ func TestCache_Methods(t *testing.T) {
 	assertRequest(t, resp, http.StatusOK, "test_4")
 }
 
+func TestCache_StatusCode(t *testing.T) {
+	client := getCachedServerWithCode(t, &Config{StatusCode: []int{200, 404}}, http.StatusInternalServerError)
+	defer client.Close()
+
+	resp, err := http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_1")
+
+	resp, err = http.Get(client.URL)
+	assert.NoError(t, err)
+	assertRequest(t, resp, http.StatusOK, "test_2")
+}
+
 func getCachedServer(t *testing.T, cfg *Config) *httptest.Server {
+	return getCachedServerWithCode(t, cfg, http.StatusOK)
+}
+
+func getCachedServerWithCode(t *testing.T, cfg *Config, status int) *httptest.Server {
 	e := echo.New()
 
 	var i int
 	h := New(cfg, freecache.NewCache(42*1024*1024))(func(c echo.Context) error {
 		i++
-		return c.String(http.StatusOK, fmt.Sprintf("test_%d", i))
+		return c.String(status, fmt.Sprintf("test_%d", i))
 	})
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

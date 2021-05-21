@@ -50,7 +50,6 @@ func (w *ResponseRecorder) WriteHeader(statusCode int) {
 
 func (r *ResponseRecorder) Result() *CacheEntry {
 	r.copyHeaders()
-	r.ResponseWriter = nil
 
 	return &CacheEntry{
 		Header:     r.headers,
