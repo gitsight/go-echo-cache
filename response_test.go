@@ -1,9 +1,9 @@
 package cache
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/http/httputil"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -21,12 +21,11 @@ func TestResponseRecorderResult(t *testing.T) {
 	}
 
 	assert.NoError(t, h(c))
+	entry := recorder.Result()
+	original := rw.Result()
+	assert.Equal(t, original.StatusCode, entry.StatusCode)
+	assert.Equal(t, original.Header, entry.Header)
 
-	original, err := httputil.DumpResponse(rw.Result(), true)
-	assert.NoError(t, err)
-	assert.NotEqual(t, "", string(original))
-
-	copy, err := recorder.Result()
-	assert.NoError(t, err)
-	assert.Equal(t, string(original), string(copy))
+	b, _ := io.ReadAll(original.Body)
+	assert.Equal(t, b, entry.Body)
 }

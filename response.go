@@ -2,22 +2,23 @@ package cache
 
 import (
 	"bytes"
+	"encoding/gob"
 	"net/http"
-	"net/http/httptest"
 )
 
 type ResponseRecorder struct {
 	http.ResponseWriter
-	r *httptest.ResponseRecorder
 
+	status       int
+	body         bytes.Buffer
+	headers      http.Header
 	headerCopied bool
 }
 
 func NewResponseRecorder(w http.ResponseWriter) *ResponseRecorder {
-	r := httptest.NewRecorder()
 	return &ResponseRecorder{
 		ResponseWriter: w,
-		r:              r,
+		headers:        make(http.Header),
 	}
 }
 
@@ -28,7 +29,7 @@ func (w *ResponseRecorder) Write(b []byte) (int, error) {
 		return i, err
 	}
 
-	return w.r.Write(b[:i])
+	return w.body.Write(b[:i])
 }
 
 func (r ResponseRecorder) copyHeaders() {
@@ -37,27 +38,25 @@ func (r ResponseRecorder) copyHeaders() {
 	}
 
 	r.headerCopied = true
-	copyHeaders(r.ResponseWriter.Header(), r.r.Header())
+	copyHeaders(r.ResponseWriter.Header(), r.headers)
 }
 
 func (w *ResponseRecorder) WriteHeader(statusCode int) {
 	w.copyHeaders()
 
-	w.r.WriteHeader(statusCode)
+	w.status = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
-func (r *ResponseRecorder) Result() ([]byte, error) {
+func (r *ResponseRecorder) Result() *CacheEntry {
 	r.copyHeaders()
 	r.ResponseWriter = nil
 
-	var buf bytes.Buffer
-	err := r.r.Result().Write(&buf)
-	if err != nil {
-		return nil, err
+	return &CacheEntry{
+		Header:     r.headers,
+		StatusCode: r.status,
+		Body:       r.body.Bytes(),
 	}
-
-	return buf.Bytes(), nil
 }
 
 func copyHeaders(src, dst http.Header) {
@@ -66,4 +65,39 @@ func copyHeaders(src, dst http.Header) {
 			dst.Set(k, v)
 		}
 	}
+}
+
+type CacheEntry struct {
+	Header     http.Header
+	StatusCode int
+	Body       []byte
+}
+
+func (c *CacheEntry) Encode() ([]byte, error) {
+	var buf bytes.Buffer
+	err := gob.NewEncoder(&buf).Encode(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (c *CacheEntry) Decode(b []byte) error {
+	dec := gob.NewDecoder(bytes.NewReader(b))
+	return dec.Decode(c)
+}
+
+func (c *CacheEntry) Replay(w http.ResponseWriter) error {
+	copyHeaders(c.Header, w.Header())
+	if c.StatusCode != 0 {
+		w.WriteHeader(c.StatusCode)
+	}
+
+	if len(c.Body) == 0 {
+		return nil
+	}
+
+	_, err := w.Write(c.Body)
+	return err
 }

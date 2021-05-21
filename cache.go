@@ -1,10 +1,7 @@
 package cache
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -87,22 +84,16 @@ func (m *CacheMiddleware) readCache(key []byte, c echo.Context) error {
 		return err
 	}
 
-	b := bufio.NewReader(bytes.NewBuffer(value))
-	r, err := http.ReadResponse(b, c.Request())
-	if err != nil {
+	entry := &CacheEntry{}
+	if err := entry.Decode(value); err != nil {
 		return err
 	}
 
-	defer r.Body.Close()
-	copyHeaders(r.Header, c.Response().Header())
-	c.Response().WriteHeader(r.StatusCode)
-
-	_, err = io.Copy(c.Response(), r.Body)
-	return err
+	return entry.Replay(c.Response())
 }
 
 func (m *CacheMiddleware) cacheResult(key []byte, r *ResponseRecorder) error {
-	b, err := r.Result()
+	b, err := r.Result().Encode()
 	if err != nil {
 		return fmt.Errorf("unable to read recorded response: %s", err)
 	}
